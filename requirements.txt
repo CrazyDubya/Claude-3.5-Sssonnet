@@ -1,5 +1,6 @@
 fastapi
 uvicorn
 anthropic
+httpx
 websockets
 python-dotenv

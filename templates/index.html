@@ -21,17 +21,47 @@
     <div class="container mx-auto bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <main class="lg:col-span-2 p-6 flex flex-col items-center justify-center">
-                <h1 class="text-3xl font-bold mb-8">Claude 3.5 Sssonnet 🐍</h1>
+                <h1 class="text-3xl font-bold mb-4">Claude 3.5 Sssonnet 🐍</h1>
+                
+                <!-- Game Mode Toggle -->
+                <div class="mb-4 flex items-center space-x-4">
+                    <span class="text-sm">Mode:</span>
+                    <button id="singleModeBtn" class="px-3 py-1 bg-primary-600 text-white rounded text-sm">Single Snake</button>
+                    <button id="multiModeBtn" class="px-3 py-1 bg-gray-600 text-white rounded text-sm">Multi-Snake Arena</button>
+                </div>
+                
+                <!-- Multi-Snake Controls -->
+                <div id="multiControls" class="mb-4 hidden">
+                    <div class="flex items-center space-x-2 mb-2">
+                        <select id="providerSelect" class="bg-gray-700 text-white px-3 py-1 rounded text-sm">
+                            <option value="">Select LLM Provider</option>
+                        </select>
+                        <input id="snakeIdInput" type="text" placeholder="Snake ID" class="bg-gray-700 text-white px-3 py-1 rounded text-sm w-24">
+                        <button id="addSnakeBtn" class="px-3 py-1 bg-green-600 text-white rounded text-sm">Add Snake</button>
+                    </div>
+                    <div id="snakesList" class="text-xs space-y-1">
+                        <!-- Active snakes will be listed here -->
+                    </div>
+                </div>
+                
                 <div class="game-area relative">
                     <canvas id="gameCanvas" width="400" height="400" class="border-4 border-primary-700 rounded-lg shadow-lg"></canvas>
                     <div id="gameOverlay" class="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden">
-                        <p class="text-6xl font-bold text-white">Game Over!</p>
+                        <div class="text-center">
+                            <p class="text-6xl font-bold text-white mb-4">Game Over!</p>
+                            <div id="winnerInfo" class="text-xl text-primary-300"></div>
+                        </div>
                     </div>
+                </div>
+                
+                <!-- Game Stats -->
+                <div id="gameStats" class="mt-4 text-sm text-gray-300 text-center">
+                    <div id="gameInfo">Tick: 0 | Mode: Single</div>
                 </div>
             </main>
             <aside class="bg-gray-700 p-6 rounded-r-xl">
-                <h2 class="text-xl mb-4">Claude's Thinking</h2>
-                <div id="claudeThinking" class="space-y-4 h-[calc(100vh-12rem)] overflow-y-auto pr-2">
+                <h2 class="text-xl mb-4">AI Thoughts 🧠</h2>
+                <div id="claudeThinking" class="space-y-4 h-[calc(100vh-16rem)] overflow-y-auto pr-2">
                     <!-- Thoughts will be dynamically added here -->
                 </div>
             </aside>
@@ -45,6 +75,116 @@
         const cellSize = 20;
         const claudeThinking = document.getElementById('claudeThinking');
         const gameOverlay = document.getElementById('gameOverlay');
+        const winnerInfo = document.getElementById('winnerInfo');
+        const gameInfo = document.getElementById('gameInfo');
+        const providerSelect = document.getElementById('providerSelect');
+        const snakeIdInput = document.getElementById('snakeIdInput');
+        const addSnakeBtn = document.getElementById('addSnakeBtn');
+        const snakesList = document.getElementById('snakesList');
+        const singleModeBtn = document.getElementById('singleModeBtn');
+        const multiModeBtn = document.getElementById('multiModeBtn');
+        const multiControls = document.getElementById('multiControls');
+
+        let currentMode = 'single';
+        let gameState = null;
+        let providers = [];
+
+        // Initialize
+        loadProviders();
+        setupEventListeners();
+
+        function setupEventListeners() {
+            singleModeBtn.addEventListener('click', () => switchMode('single'));
+            multiModeBtn.addEventListener('click', () => switchMode('multi'));
+            addSnakeBtn.addEventListener('click', addSnake);
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            if (mode === 'single') {
+                singleModeBtn.classList.add('bg-primary-600');
+                singleModeBtn.classList.remove('bg-gray-600');
+                multiModeBtn.classList.add('bg-gray-600');
+                multiModeBtn.classList.remove('bg-primary-600');
+                multiControls.classList.add('hidden');
+                gameInfo.textContent = 'Mode: Single Snake';
+            } else {
+                multiModeBtn.classList.add('bg-primary-600');
+                multiModeBtn.classList.remove('bg-gray-600');
+                singleModeBtn.classList.add('bg-gray-600');
+                singleModeBtn.classList.remove('bg-primary-600');
+                multiControls.classList.remove('hidden');
+                gameInfo.textContent = 'Mode: Multi-Snake Arena';
+            }
+        }
+
+        async function loadProviders() {
+            try {
+                const response = await fetch('/api/providers');
+                const data = await response.json();
+                providers = data.providers;
+                
+                providerSelect.innerHTML = '<option value="">Select LLM Provider</option>';
+                providers.forEach(provider => {
+                    const option = document.createElement('option');
+                    option.value = provider.id;
+                    option.textContent = provider.name;
+                    providerSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load providers:', error);
+            }
+        }
+
+        async function addSnake() {
+            const snakeId = snakeIdInput.value.trim();
+            const providerId = providerSelect.value;
+            
+            if (!snakeId || !providerId) {
+                alert('Please enter a snake ID and select a provider');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/add-snake', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        snake_id: snakeId,
+                        llm_provider_id: providerId
+                    })
+                });
+
+                if (response.ok) {
+                    snakeIdInput.value = '';
+                    updateSnakesList();
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to add snake: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Error adding snake:', error);
+                alert('Failed to add snake');
+            }
+        }
+
+        function updateSnakesList() {
+            if (!gameState || !gameState.snakes) return;
+            
+            snakesList.innerHTML = '';
+            Object.entries(gameState.snakes).forEach(([snakeId, snake]) => {
+                const snakeInfo = document.createElement('div');
+                snakeInfo.className = `flex items-center justify-between p-2 rounded text-xs ${snake.status === 'alive' ? 'bg-green-800' : 'bg-red-800'}`;
+                snakeInfo.innerHTML = `
+                    <span style="color: ${snake.color}">${snakeId}</span>
+                    <span>${snake.llm_provider}</span>
+                    <span>Score: ${snake.score}</span>
+                `;
+                snakesList.appendChild(snakeInfo);
+            });
+        }
 
         socket.onopen = () => {
             console.log('WebSocket connected');
@@ -53,25 +193,52 @@
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
             console.log('Received message:', data);
+            
             switch (data.type) {
                 case 'game_state':
                     console.log('Received game state update:', data.state);
+                    gameState = data.state;
                     drawGame(data.state);
+                    updateGameInfo(data.state);
+                    updateSnakesList();
                     break;
                 case 'claude_thinking':
-                    addClaudeThought(data.thought);
+                    addThought(data.thought, 'Claude');
+                    break;
+                case 'snake_thinking':
+                    addThought(data.thought, data.provider, data.snake_id);
                     break;
                 case 'tool_usage':
-                    addToolUsagePill(data.direction);
+                    if (data.snake_id) {
+                        addToolUsagePill(data.direction, data.provider, data.snake_id);
+                    } else {
+                        addToolUsagePill(data.direction);
+                    }
                     break;
                 case 'game_over':
-                    showGameOver();
+                    showGameOver(data.final_state);
+                    break;
+                case 'snake_added':
+                    gameState = data.game_state;
+                    updateSnakesList();
+                    addThought(`New snake ${data.snake_id} joined the arena!`, 'System');
+                    break;
+                case 'snake_error':
+                    addThought(`Error: ${data.error}`, data.provider, data.snake_id);
                     break;
                 case 'error':
                     console.error('An error occurred:', data.message);
+                    addThought(`Error: ${data.message}`, 'System');
                     break;
             }
         };
+
+        function updateGameInfo(gameState) {
+            if (gameState.game_tick !== undefined) {
+                const aliveCount = Object.values(gameState.snakes || {}).filter(s => s.status === 'alive').length;
+                gameInfo.textContent = `Tick: ${gameState.game_tick} | Mode: ${currentMode} | Alive: ${aliveCount}`;
+            }
+        }
 
         function drawGame(gameState) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -92,21 +259,62 @@
                 ctx.stroke();
             }
 
-            // Draw snake
-            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            gradient.addColorStop(0, '#059669');
-            gradient.addColorStop(1, '#10b981');
-            ctx.fillStyle = gradient;
-            for (let segment of gameState.snake) {
-                ctx.beginPath();
-                ctx.roundRect(segment[0] * cellSize, segment[1] * cellSize, cellSize - 1, cellSize - 1, 5);
-                ctx.fill();
+            // Draw snakes (multi-snake mode)
+            if (gameState.snakes) {
+                Object.entries(gameState.snakes).forEach(([snakeId, snake]) => {
+                    drawSnake(snake);
+                });
+            }
+            // Draw single snake (legacy mode)
+            else if (gameState.snake) {
+                const legacySnake = {
+                    body: gameState.snake,
+                    color: '#10b981',
+                    status: 'alive'
+                };
+                drawSnake(legacySnake);
             }
 
             // Draw food
+            const foodItems = gameState.food || [gameState.food];
+            foodItems.forEach(food => {
+                if (food && food.position) {
+                    drawFood(food.position);
+                } else if (food && Array.isArray(food)) {
+                    drawFood(food);
+                }
+            });
+        }
+
+        function drawSnake(snake) {
+            if (!snake.body || snake.body.length === 0) return;
+            
+            ctx.fillStyle = snake.color || '#10b981';
+            
+            // Add transparency for dead snakes
+            if (snake.status !== 'alive') {
+                ctx.globalAlpha = 0.3;
+            }
+            
+            snake.body.forEach((segment, index) => {
+                ctx.beginPath();
+                if (index === 0) {
+                    // Head - slightly larger
+                    ctx.roundRect(segment[0] * cellSize + 1, segment[1] * cellSize + 1, cellSize - 2, cellSize - 2, 6);
+                } else {
+                    // Body
+                    ctx.roundRect(segment[0] * cellSize + 2, segment[1] * cellSize + 2, cellSize - 4, cellSize - 4, 3);
+                }
+                ctx.fill();
+            });
+            
+            ctx.globalAlpha = 1; // Reset alpha
+        }
+
+        function drawFood(position) {
             ctx.fillStyle = '#f43f5e';
             ctx.beginPath();
-            ctx.arc(gameState.food[0] * cellSize + cellSize / 2, gameState.food[1] * cellSize + cellSize / 2, cellSize / 2 - 2, 0, 2 * Math.PI);
+            ctx.arc(position[0] * cellSize + cellSize / 2, position[1] * cellSize + cellSize / 2, cellSize / 2 - 2, 0, 2 * Math.PI);
             ctx.fill();
 
             // Add glow to food
@@ -116,20 +324,31 @@
             ctx.shadowBlur = 0;
         }
 
-        function addClaudeThought(thought) {
+        function addThought(thought, provider, snakeId = null) {
             const thoughtElement = document.createElement('div');
-            thoughtElement.className = 'bg-gray-800 rounded-lg p-4 shadow transition-all duration-300 ease-in-out hover:shadow-lg hover:scale-102';
-            thoughtElement.textContent = thought;
+            thoughtElement.className = 'bg-gray-800 rounded-lg p-3 shadow transition-all duration-300 ease-in-out hover:shadow-lg';
+            
+            const header = document.createElement('div');
+            header.className = 'text-xs text-gray-400 mb-1';
+            header.textContent = snakeId ? `${provider} (${snakeId})` : provider;
+            
+            const content = document.createElement('div');
+            content.className = 'text-sm';
+            content.textContent = thought;
+            
+            thoughtElement.appendChild(header);
+            thoughtElement.appendChild(content);
             claudeThinking.appendChild(thoughtElement);
             claudeThinking.scrollTop = claudeThinking.scrollHeight;
         }
 
-        function addToolUsagePill(direction) {
+        function addToolUsagePill(direction, provider = 'Claude', snakeId = null) {
             const pillElement = document.createElement('div');
-            pillElement.className = 'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-primary-600 text-white transition-all duration-300 ease-in-out hover:bg-primary-700';
+            pillElement.className = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary-600 text-white transition-all duration-300 ease-in-out hover:bg-primary-700 mb-2';
             
             const symbol = getDirectionSymbol(direction);
-            pillElement.innerHTML = `Claude used: <span class="ml-2 bg-primary-700 px-2 py-1 rounded-full">${direction} ${symbol}</span>`;
+            const label = snakeId ? `${provider} (${snakeId})` : provider;
+            pillElement.innerHTML = `${label}: <span class="ml-2 bg-primary-700 px-2 py-1 rounded-full">${direction} ${symbol}</span>`;
             
             claudeThinking.appendChild(pillElement);
             claudeThinking.scrollTop = claudeThinking.scrollHeight;
@@ -145,7 +364,22 @@
             }
         }
 
-        function showGameOver() {
+        function showGameOver(finalState) {
+            if (finalState && finalState.snakes) {
+                const aliveSnakes = Object.entries(finalState.snakes).filter(([id, snake]) => snake.status === 'alive');
+                const deadSnakes = Object.entries(finalState.snakes).filter(([id, snake]) => snake.status !== 'alive');
+                
+                if (aliveSnakes.length === 1) {
+                    const [winnerId, winner] = aliveSnakes[0];
+                    winnerInfo.innerHTML = `🏆 Winner: ${winnerId}<br>Score: ${winner.score}<br>Provider: ${winner.llm_provider}`;
+                } else if (aliveSnakes.length === 0) {
+                    winnerInfo.innerHTML = '💀 No Survivors!<br>All snakes perished';
+                } else {
+                    winnerInfo.innerHTML = `🎮 Game Over<br>${aliveSnakes.length} snakes remaining`;
+                }
+            } else {
+                winnerInfo.innerHTML = '🎮 Game Over!';
+            }
             gameOverlay.classList.remove('hidden');
         }
     </script>
